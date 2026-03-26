@@ -554,39 +554,32 @@ async function saveApiKey() {
 }
 
 // ═══════════════════════════════════════════
-// GEMINI API  (gemma-3-27b-it for high rate limits)
+// GEMINI API (via Backend)
 // ═══════════════════════════════════════════
-// messages: [{role:'user'|'model', parts:[{text:'...'}]}]
 async function callGemini(prompt, history = [], key, maxTokens = 1200, systemInstruction = '') {
-  const apiKey = key || state.apiKey;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${apiKey}`;
+  try {
+    const response = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        history,
+        maxTokens,
+        systemInstruction
+      })
+    });
 
-  // Gemma doesn't support systemInstruction parameter, so prepend it to prompt
-  let finalPrompt = prompt;
-  if (systemInstruction) {
-    finalPrompt = `${systemInstruction}\n\n${prompt}`;
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || response.statusText);
+    }
+
+    const data = await response.json();
+    return data.text;
+  } catch (error) {
+    console.error('Gemini API Error:', error);
+    throw error;
   }
-
-  const body = {
-    contents: [
-      ...history,
-      { role: 'user', parts: [{ text: finalPrompt }] }
-    ],
-    generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 }
-  };
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error?.message || res.statusText);
-  }
-  const data = await res.json();
-  return data.candidates[0].content.parts[0].text;
 }
 
 // ═══════════════════════════════════════════
