@@ -1288,19 +1288,68 @@ EXAMEN: ${template.title}
 PARAMÈTRES EXACTS:
 ${template.params.map(p => `- ${p}`).join('\n')}
 
-INSTRUCTIONS:
+INSTRUCTIONS CRITIQUES:
 1. Format: * **Param:** valeur (N: norme)
-2. UNIQUEMENT les paramètres ci-dessus
-3. Valeurs anormales liées à la pathologie
-4. Unités médicales françaises
-5. AUCUN texte supplémentaire
-6. AUCUN diagnostic ni interprétation`;
+2. UNIQUEMENT les paramètres ci-dessus, RIEN D'AUTRE
+3. **TOUS les résultats anormaux DOIVENT être directement cohérents avec la pathologie et symptômes déclarés**
+4. SI l'examen n'est pas pertinent à la pathologie, retourner les valeurs NORMALES
+5. INTERDICTION ABSOLUE de générer des trouvailles contradictoires ou non liées à la pathologie
+6. Unités médicales françaises
+7. AUCUN texte supplémentaire, AUCUN diagnostic, AUCUNE interprétation`;
 
-  const result = await callGemini(prompt, [], state.apiKey, tokenBudget, '');
+  let result = await callGemini(prompt, [], state.apiKey, tokenBudget, '');
+  
+  // Validate coherence between findings and pathology
+  const isCoherent = await validateExamCoherence(template.title, result, c.pathologie_cachee, c.symptomes_principaux);
+  
+  if (!isCoherent) {
+    // Regenerate with stronger emphasis on coherence
+    const retryPrompt = `CORRECTION REQUISE - Les résultats précédents n'étaient pas cohérents avec la pathologie.
+
+DIAGNOSTIC: ${c.pathologie_cachee}
+SYMPTÔMES: ${c.symptomes_principaux?.join(', ')}
+
+EXAMEN: ${template.title}
+PARAMÈTRES:
+${template.params.map(p => `- ${p}`).join('\n')}
+
+GÉNÈRE DE NOUVEAU en respectant STRICTEMENT:
+- Chaque trouvaille anormale DOIT être expliquée par la pathologie ou les symptômes
+- Pas de trouvailles aléatoires ou hors de propos
+- Format: * **Param:** valeur (N: norme)
+- RIEN D'AUTRE`;
+    
+    result = await callGemini(retryPrompt, [], state.apiKey, tokenBudget, '');
+  }
   
   // Format the report with title and result, with proper HTML line breaks
   const contentWithBreaks = result.trim().replace(/\n/g, '<br>');
-  return `<strong>${template.title}</strong><br><br>${contentWithBreaks}`;
+  // Convert markdown bold (**text**) to HTML bold
+  const formattedContent = contentWithBreaks.replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>');
+  return `<strong>${template.title}</strong><br><br>${formattedContent}`;
+}
+
+async function validateExamCoherence(examTitle, findings, pathology, symptoms) {
+  // Quick validation to check if findings match pathology
+  const validationPrompt = `Tu es expert en médecine clinique. Évalue RAPIDEMENT si les trouvailles médicales sont cohérentes avec la pathologie.
+
+PATHOLOGIE: ${pathology}
+SYMPTÔMES: ${symptoms?.join(', ')}
+EXAMEN: ${examTitle}
+TROUVAILLES:
+${findings}
+
+Réponds UNIQUEMENT par:
+- "COHÉRENT" si tous les résultats anormaux sont logiquement liés à la pathologie
+- "INCOHÉRENT" si les trouvailles contredisent ou ne correspondent pas à la pathologie`;
+
+  try {
+    const validation = await callGemini(validationPrompt, [], state.apiKey, 50, '');
+    return validation.trim().toUpperCase().includes('COHÉRENT');
+  } catch(e) {
+    // Si validation échoue, accepter les résultats
+    return true;
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -1335,7 +1384,7 @@ JSON attendu (chaînes courtes, max 80 caractères par item):
 
   try {
     const raw = await callGemini(
-      evalPrompt, [], null, 1200,
+      evalPrompt, [], state.apiKey, 1200,
       'Tu es évaluateur médical. Réponds UNIQUEMENT avec du JSON valide et complet, sans backticks, sans texte avant ou après. Le JSON doit contenir: note, mention, commentaire_general, points_forts[], points_manques[], corrections[].'
     );
     const eval_ = safeParseJSON(raw);
