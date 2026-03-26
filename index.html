@@ -555,8 +555,10 @@ async function saveApiKey() {
       document.getElementById('api-modal').classList.add('hidden');
     }
   } catch(e) {
-    document.getElementById('api-error').textContent = `Erreur: ${e.message}`;
+    const errorMsg = e.message || 'Erreur inconnue. Vérifiez votre clé API et votre connexion.';
+    document.getElementById('api-error').textContent = `❌ ${errorMsg}`;
     document.getElementById('api-error').classList.remove('hidden');
+    console.error('API Error details:', e);
     btn.disabled = false;
     btn.innerHTML = '🔑 Commencer la simulation';
   }
@@ -645,8 +647,8 @@ async function callGemini(prompt, history = [], key, maxTokens = 1200, systemIns
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const errorMsg = errorData.error?.message || response.statusText;
-      throw new Error(errorMsg);
+      const errorMsg = errorData.error?.message || errorData.error?.details?.[0]?.message || response.statusText;
+      throw new Error(`API Error (${response.status}): ${errorMsg}`);
     }
 
     const data = await response.json();
