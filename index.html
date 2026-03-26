@@ -628,11 +628,9 @@ async function callGemini(prompt, history = [], key, maxTokens = 1200, systemIns
       }
     };
 
-    // Add system instruction if provided
-    if (systemInstruction) {
-      payload.systemInstruction = {
-        parts: [{ text: systemInstruction }]
-      };
+    // For gemma-3-27b-it: include system instruction in the first prompt instead
+    if (systemInstruction && contents.length > 0) {
+      contents[0].parts.unshift({ text: `${systemInstruction}\n\n` });
     }
 
     // Call Gemini API directly
@@ -1016,7 +1014,7 @@ Réponds UNIQUEMENT avec le JSON, sans backticks ni commentaires.`;
 
   try {
     const raw = await callGemini(
-      prompt, [], null, 800,
+      prompt, [], state.apiKey, 800,
       'Tu génères des cas cliniques réalistes pour la formation médicale. Réponds UNIQUEMENT avec du JSON valide, sans backticks ni texte avant/après.'
     );
     const clean = raw.replace(/```json|```/g, '').trim();
