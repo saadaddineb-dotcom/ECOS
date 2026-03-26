@@ -782,15 +782,22 @@ async function randomCase() {
 
 // ── CORS Proxy helper ──
 async function fetchWithProxy(url) {
+  // For PubMed/eutils — always use proxy due to CORS restrictions
+  if (url.includes('eutils.ncbi.nlm.nih.gov')) {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    return fetch(proxyUrl);
+  }
+
+  // For other URLs — try direct first
   try {
-    // Try direct fetch first
     const res = await Promise.race([
       fetch(url),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
     ]);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res;
   } catch(e) {
-    // If direct fetch fails (CORS), use proxy — allorigins.win is more reliable
+    // Fallback to proxy if direct fetch fails
     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
     return fetch(proxyUrl);
   }
