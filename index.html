@@ -1275,25 +1275,28 @@ async function generateExamReport(examType) {
   const c = state.caseData;
   const template = EXAM_TEMPLATES[examType];
   
-  const prompt = `Tu es un générateur de rapports médicaux réalistes et cohérents.
-Génère un rapport FIDÈLE aux signes cliniques du patient, SANS interprétation diagnostique.
+  // Adjust token budget based on exam complexity
+  const tokenBudget = template.params.length > 5 ? 400 : 150;
+  
+  const prompt = `Tu es un générateur de rapports médicaux réalistes et STRICTEMENT délimités.
+Génère UNIQUEMENT les paramètres demandés, RIEN D'AUTRE.
 
 DIAGNOSTIC: ${c.pathologie_cachee}
 SYMPTÔMES: ${c.symptomes_principaux?.join(', ')}
-HISTORIQUE: ${c.histoire}
 
 EXAMEN: ${template.title}
-PARAMÈTRES: ${template.params.join(', ')}
+PARAMÈTRES EXACTS:
+${template.params.map(p => `- ${p}`).join('\n')}
 
-CRITICES:
-1. Inclure VALEURS ANORMALES liées à la pathologie
-2. Format: * **Param:** valeur (N: norme)
-3. Termes médicaux français, unités exactes
-4. AUCUN diagnostic ni interprétation
-5. Cohérent avec la présentation clinique
-6. Compact et lisible`;
+INSTRUCTIONS:
+1. Format: * **Param:** valeur (N: norme)
+2. UNIQUEMENT les paramètres ci-dessus
+3. Valeurs anormales liées à la pathologie
+4. Unités médicales françaises
+5. AUCUN texte supplémentaire
+6. AUCUN diagnostic ni interprétation`;
 
-  const result = await callGemini(prompt, [], state.apiKey, 350, '');
+  const result = await callGemini(prompt, [], state.apiKey, tokenBudget, '');
   
   // Format the report with title and result, with proper HTML line breaks
   const contentWithBreaks = result.trim().replace(/\n/g, '<br>');
