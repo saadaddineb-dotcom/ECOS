@@ -1185,19 +1185,22 @@ async function generateExamReport(examType) {
   const template = EXAM_TEMPLATES[examType];
   
   const prompt = `Tu es un système de génération de rapports médicaux.
-Génère un rapport d'examen réaliste pour un patient avec: ${c.pathologie_cachee}
+Génère un rapport d'examen SANS AUCUNE INTERPRÉTATION CLINIQUE.
 
 Template: ${template.title}
 Paramètres à inclure: ${template.params.join(', ')}
 
 Patient: ${c.prenom} ${c.nom}, ${c.age} ans
+Contexte clinique: ${c.pathologie_cachee}
 
-Exigences:
-- Format lisible et structuré
-- Inclure des valeurs numériques réalistes si applicable
-- Inclure des anomalies pertinentes au diagnostic
-- Texte compact (150-200 mots)
-- Français médical`;
+EXIGENCES ABSOLUES:
+- UNIQUEMENT les valeurs mesurées
+- UNIQUEMENT les normes/intervalles de référence
+- Format: * **Paramètre:** valeur (N: normes)
+- PAS d'interprétation (pas de "anémie", "infection", "anomalie", etc.)
+- PAS de motif clinique présenté
+- PAS de conclusion ou diagnostic
+- Compact, lisible, sec`;
 
   const result = await callGemini(prompt, [], null, 250, '');
   
