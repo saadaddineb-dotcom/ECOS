@@ -822,7 +822,7 @@ ${state.sourceText.slice(0, 3000)}
 Réponds UNIQUEMENT avec le JSON, sans backticks.`;
 
   try {
-    const raw = await callGemini(prompt, [], null, 900,
+    const raw = await callGemini(prompt, [], state.apiKey, 900,
       'Tu génères des cas cliniques réalistes pour la médecine. Réponds UNIQUEMENT avec du JSON valide, sans backticks ni texte avant/après.');
     const clean = raw.replace(/```json|```/g, '').trim();
     state.caseData = JSON.parse(clean);
@@ -1147,7 +1147,7 @@ RÈGLES ABSOLUES:
   const history = state.messages.slice(0, -1);
 
   try {
-    const reply = await callGemini(`${systemInstruction}\n\nQuestion du médecin: ${text}`, history, null, 300, '');
+    const reply = await callGemini(`${systemInstruction}\n\nQuestion du médecin: ${text}`, history, state.apiKey, 300, '');
     removeTyping();
     addMessage('patient', reply);
   } catch(e) {
@@ -1294,7 +1294,7 @@ EXIGENCES ABSOLUES:
 - PAS de conclusion ou diagnostic
 - Compact, lisible, sec`;
 
-  const result = await callGemini(prompt, [], null, 250, '');
+  const result = await callGemini(prompt, [], state.apiKey, 250, '');
   
   // Format the report with title and result, with proper HTML line breaks
   const contentWithBreaks = result.trim().replace(/\n/g, '<br>');
