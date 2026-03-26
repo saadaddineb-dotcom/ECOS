@@ -1075,33 +1075,68 @@ const EXAM_ALIASES = {
   'radio': 'imaging', 'radiographie': 'imaging', 'irm': 'imaging', 'rmi': 'imaging',
   'examen-physique': 'physical', 'palpation': 'physical', 'inspection': 'physical', 'examen': 'physical',
   'vitaux': 'vitals', 'signes-vitaux': 'vitals', 'signaux': 'vitals',
-  'neuro': 'neuro', 'neurologique': 'neuro', 'test-neuro': 'neuro'
+  'neuro': 'neuro', 'neurologique': 'neuro', 'test-neuro': 'neuro',
+  'glycemie': 'glycemie',
+  'cholesterol': 'cholesterol',
+  'bu': 'urine', 'urine': 'urine',
+  'ta': 'tension', 'tension': 'tension',
+  'temp': 'temperature', 'temperature': 'temperature',
+  'fr': 'frequencecardiaque', 'hr': 'frequencecardiaque', 'frequencecardiaque': 'frequencecardiaque',
+  'sp02': 'saturation', 'saturation': 'saturation'
 };
 
 const EXAM_TEMPLATES = {
   blood: {
-    title: '🩸 RÉSULTATS NFS / ANALYSES DE SANG',
-    params: ['Hémoglobine', 'Leucocytes', 'Plaquettes', 'Urée', 'Créatinine', 'Glucose', 'CRP', 'Transaminases']
+    title: '🩸 RÉSULTATS ANALYSES DE SANG',
+    params: ['NFS: Hémoglobine', 'NFS: Leucocytes', 'NFS: Plaquettes', 'Bilan rénal: Urée', 'Bilan rénal: Créatinine', 'Bilan hépatique: Transaminases (ALT/AST)', 'Bilan hépatique: Bilirubine', 'Bilan métabolique: Glucose', 'Marqueurs inflammation: CRP']
   },
   ecg: {
     title: '📊 RÉSULTATS ECG',
-    params: ['Fréquence cardiaque', 'Rythme', 'Axe QRS', 'Sus-décalage ST', 'Onde T', 'Intervalle PR']
+    params: ['Fréquence cardiaque (bpm)', 'Rythme', 'Sus-décalage ST (oui/non)', 'Sus-décalage PR (oui/non)', 'Onde Q (oui/non)', 'Arythmie détectée (oui/non)']
   },
   imaging: {
     title: '🖼️ RAPPORT D\'IMAGERIE MÉDICALE',
-    params: ['Type d\'imagerie', 'Localisation', 'Hallucinations pathologiques', 'Conclusions']
+    params: ['Type d\'imagerie', 'Conclusion du radiologue']
   },
   physical: {
     title: '🔍 RÉSULTATS EXAMEN PHYSIQUE',
-    params: ['Inspection', 'Palpation', 'Percussion', 'Auscultation', 'Signes pathologiques', 'Observations']
+    params: ['Inspection: observations', 'Palpation: observations', 'Percussion: observations', 'Auscultation: observations']
   },
   vitals: {
     title: '❤️ SIGNES VITAUX',
-    params: ['Température', 'Fréquence cardiaque', 'Fréquence respiratoire', 'Tension artérielle', 'SpO2', 'Interprétation']
+    params: ['Température (°C)', 'Fréquence cardiaque (bpm)', 'Fréquence respiratoire (bpm)', 'Tension artérielle (mmHg)', 'SpO2 (%)']
   },
   neuro: {
     title: '🧠 TEST NEUROLOGIQUE',
-    params: ['État de conscience', 'Paires crâniennes', 'Force musculaire', 'Sensibilité', 'Réflexes', 'Coordination']
+    params: ['État de conscience (alerte/confus/comateux)', 'Force musculaire (0-5)', 'Sensibilité (normale/diminuée)', 'Réflexes (vifs/d\'une côté/asymétriques)', 'Coordination (normale/incoordination)']
+  },
+  glycemie: {
+    title: '🩸 GLYCÉMIE À JEUN',
+    params: ['Glycémie (mg/dL)']
+  },
+  cholesterol: {
+    title: '🧬 BILAN LIPIDIQUE',
+    params: ['Cholestérol total (mg/dL)', 'HDL (mg/dL)', 'LDL (mg/dL)', 'Triglycérides (mg/dL)']
+  },
+  urine: {
+    title: '🧪 ANALYSE D\'URINE (BU)',
+    params: ['Couleur', 'Transparence', 'Protéines (négatif/positif)', 'Glucose (négatif/positif)', 'Hématies (nombre)', 'Leucocytes (nombre)', 'Bactéries (présentes/absentes)']
+  },
+  tension: {
+    title: '❤️ TENSION ARTÉRIELLE',
+    params: ['Systolique (mmHg)', 'Diastolique (mmHg)']
+  },
+  temperature: {
+    title: '🌡️ TEMPÉRATURE',
+    params: ['Température (°C)']
+  },
+  frequencecardiaque: {
+    title: '❤️ FRÉQUENCE CARDIAQUE',
+    params: ['Battements par minute (bpm)']
+  },
+  saturation: {
+    title: '💨 SATURATION OXYGÈNE (SpO2)',
+    params: ['Saturation (%)']
   }
 };
 
@@ -1113,7 +1148,7 @@ function mapCommandToExamType(cmd) {
 async function handleExamCommand(cmd) {
   const examType = mapCommandToExamType(cmd);
   if (!examType || !state.caseData) {
-    addMessage('system', '❌ Commande non reconnue. Exemples: /nfs, /sang, /ecg, /imagerie, /radio, /irm, /examen-physique, /vitaux, /neuro');
+    addMessage('system', '❌ Commande non reconnue. Exemples: /nfs, /sang, /ecg, /imagerie, /radio, /irm, /examen-physique, /vitaux, /neuro, /glycemie, /cholesterol, /bu, /ta, /temp, /fr, /hr, /sp02');
     return;
   }
 
