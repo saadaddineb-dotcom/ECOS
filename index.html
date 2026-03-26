@@ -485,11 +485,12 @@
           </svg>
           <div>
             <div class="score-value" id="score-num">--</div>
-            <div class="score-label">/20</div>
+            <div class="score-label">/100</div>
           </div>
         </div>
         <div id="score-mention" style="font-size:.85rem;color:var(--muted);margin-bottom:24px"></div>
         <div id="eval-comment" style="font-size:.88rem;line-height:1.7;max-width:600px;margin:0 auto"></div>
+        <div id="eval-criteria" style="margin-top: 24px; max-width: 600px; margin-left: auto; margin-right: auto;"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
         <div class="card">
@@ -1160,7 +1161,10 @@ RÈGLES ABSOLUES:
 // EXAM SLASH COMMANDS
 // ─────────────────────────────────────────
 const EXAM_ALIASES = {
-  'nfs': 'blood', 'hemo': 'blood', 'numeration': 'blood', 'sang': 'blood',
+  'nfs': 'nfs', 'hemo': 'nfs', 'numeration': 'nfs',
+  'bilan-renal': 'renal', 'renal': 'renal', 'urée': 'renal', 'creatinine': 'renal',
+  'bilan-hepatique': 'hepatic', 'hepatic': 'hepatic', 'foie': 'hepatic', 'alt': 'hepatic', 'ast': 'hepatic',
+  'bilan-inflammatoire': 'inflammatory', 'crp': 'inflammatory', 'vs': 'inflammatory',
   'ecg': 'ecg', 'ekg': 'ecg',
   'imagerie': 'imaging', 'scanner': 'imaging', 'tomodensitometrie': 'imaging', 'ct': 'imaging',
   'radio': 'imaging', 'radiographie': 'imaging', 'irm': 'imaging', 'rmi': 'imaging',
@@ -1177,9 +1181,21 @@ const EXAM_ALIASES = {
 };
 
 const EXAM_TEMPLATES = {
-  blood: {
-    title: '🩸 RÉSULTATS ANALYSES DE SANG',
-    params: ['NFS: Hémoglobine', 'NFS: Leucocytes', 'NFS: Plaquettes', 'Bilan rénal: Urée', 'Bilan rénal: Créatinine', 'Bilan hépatique: Transaminases (ALT/AST)', 'Bilan hépatique: Bilirubine', 'Bilan métabolique: Glucose', 'Marqueurs inflammation: CRP']
+  nfs: {
+    title: '🩸 RÉSULTATS ANALYSES NFS',
+    params: ['Hémoglobine (g/dL)', 'Leucocytes (x10^9/L)', 'Plaquettes (x10^9/L)']
+  },
+  renal: {
+    title: '🔬 BILAN RÉNAL',
+    params: ['Urée (mg/dL)', 'Créatinine (mg/dL)']
+  },
+  hepatic: {
+    title: '🔬 BILAN HÉPATIQUE',
+    params: ['ALT/ALAT (U/L)', 'AST/ASAT (U/L)', 'Bilirubine totale (mg/dL)']
+  },
+  inflammatory: {
+    title: '🔬 BILAN INFLAMMATOIRE',
+    params: ['CRP (mg/L)', 'VS (mm/h)']
   },
   ecg: {
     title: '📊 RÉSULTATS ECG',
@@ -1239,7 +1255,7 @@ function mapCommandToExamType(cmd) {
 async function handleExamCommand(cmd) {
   const examType = mapCommandToExamType(cmd);
   if (!examType || !state.caseData) {
-    addMessage('system', '❌ Commande non reconnue. Exemples: /nfs, /sang, /ecg, /imagerie, /radio, /irm, /examen-physique, /vitaux, /neuro, /glycemie, /cholesterol, /bu, /ta, /temp, /fr, /hr, /sp02');
+    addMessage('system', '❌ Commande non reconnue. Exemples: /nfs, /bilan-renal, /bilan-hepatique, /bilan-inflammatoire, /ecg, /imagerie, /radio, /irm, /examen-physique, /vitaux, /neuro, /glycemie, /cholesterol, /bu, /ta, /temp, /fr, /hr, /sp02');
     return;
   }
 
@@ -1355,7 +1371,97 @@ Réponds UNIQUEMENT par:
 // ═══════════════════════════════════════════
 // EVALUATION
 // ═══════════════════════════════════════════
+
+// BARÈME UNIFORME D'ÉVALUATION
+const EVALUATION_RUBRIC = {
+  criteria: {
+    recueil_info: {
+      label: 'Recueil d\'informations',
+      description: 'Exploration systématique des symptômes, antécédents, histoire de la maladie',
+      maxPoints: 20
+    },
+    examen_clinique: {
+      label: 'Pertinence examen clinique',
+      description: 'Diagnostic des examens demandés, ordonnancement logique',
+      maxPoints: 20
+    },
+    analyse_resultats: {
+      label: 'Analyse des résultats',
+      description: 'Interprétation correcte des tests, corrélation avec la clinique',
+      maxPoints: 20
+    },
+    hypothese_diagnostique: {
+      label: 'Hypothèse diagnostique',
+      description: 'Formuler le diagnostic correct ou approches diagnostiques pertinentes',
+      maxPoints: 20
+    },
+    communication: {
+      label: 'Communication & relation',
+      description: 'Écoute active, empathie, clarté de communication avec le patient',
+      maxPoints: 20
+    }
+  },
+  gradeScale: [
+    { min: 90, max: 100, mention: 'Excellent', emoji: '🌟' },
+    { min: 80, max: 89, mention: 'Très bon', emoji: '⭐' },
+    { min: 70, max: 79, mention: 'Bon', emoji: '✅' },
+    { min: 60, max: 69, mention: 'Satisfaisant', emoji: '👍' },
+    { min: 50, max: 59, mention: 'Passable', emoji: '📊' },
+    { min: 0, max: 49, mention: 'Insatisfaisant', emoji: '⚠️' }
+  ],
+  getTotalPoints: function() {
+    return Object.values(this.criteria).reduce((sum, c) => sum + c.maxPoints, 0);
+  },
+  getGrade: function(score) {
+    return this.gradeScale.find(g => score >= g.min && score <= g.max);
+  }
+};
+
+function getEvaluationPrompt(transcriptShort, sourceShort) {
+  const totalPoints = EVALUATION_RUBRIC.getTotalPoints();
+  const criteriaText = Object.entries(EVALUATION_RUBRIC.criteria)
+    .map(([key, crit]) => `- ${crit.label} (/${crit.maxPoints}): ${crit.description}`)
+    .join('\n');
+
+  return `Tu es évaluateur médical expert. Évalue rigoureusement cet entretien médecin-patient selon le barème uniforme fourni.
+
+BARÈME D'ÉVALUATION (Total: ${totalPoints} points):
+${criteriaText}
+
+SOURCE MÉDICALE RÉFÉRENCE:
+${sourceShort}
+
+ENTRETIEN À ÉVALUER:
+${transcriptShort}
+
+DIRECTIVES D'ÉVALUATION:
+1. Score chaque critère entre 0 et son maximum
+2. Justifie chaque score par rapport au niveau d'exécution
+3. Identifie les forces et faiblesses spécifiques
+4. Propose des améliorations concrètes
+5. Ne donner que la réponse JSON, AUCUN texte avant ou après
+
+Réponds en JSON STRICTEMENT dans ce format (sans backticks):
+{
+  "recueil_info": {"score": 15, "justification": "..."},
+  "examen_clinique": {"score": 16, "justification": "..."},
+  "analyse_resultats": {"score": 14, "justification": "..."},
+  "hypothese_diagnostique": {"score": 17, "justification": "..."},
+  "communication": {"score": 18, "justification": "..."},
+  "commentaire_general": "...(synthèse globale en 1-2 phrases)",
+  "points_forts": ["...", "..."],
+  "points_manques": ["...", "..."],
+  "corrections": ["...", "..."]
+}`;
+}
+
 async function endSession() {
+  if (!state.apiKey) {
+    document.getElementById('eval-loading-card').classList.remove('hidden');
+    document.getElementById('eval-loading-card').innerHTML = `<div class="alert alert-error">Erreur: Clé API manquante. Veuillez d'abord entrer votre clé Gemini dans les paramètres et réessayer.</div>`;
+    return;
+  }
+  
   if (state.messages.length < 4) {
     if (!confirm('L\'entretien est très court. Terminer quand même?')) return;
   }
@@ -1373,22 +1479,26 @@ async function endSession() {
   const transcriptShort = transcript.slice(0, 3000);
   const sourceShort = state.sourceText.slice(0, 1200);
 
-  const evalPrompt = `Évalue cet entretien médecin-patient. Réponds en JSON UNIQUEMENT, sans texte avant ou après, sans backticks.
-
-SOURCE MÉDICALE: ${sourceShort}
-
-ENTRETIEN: ${transcriptShort}
-
-JSON attendu (chaînes courtes, max 80 caractères par item):
-{"note":12,"mention":"Passable","commentaire_general":"...","points_forts":["...","..."],"points_manques":["...","..."],"corrections":["...","..."]}`;
+  const evalPrompt = getEvaluationPrompt(transcriptShort, sourceShort);
 
   try {
     const raw = await callGemini(
-      evalPrompt, [], state.apiKey, 1200,
-      'Tu es évaluateur médical. Réponds UNIQUEMENT avec du JSON valide et complet, sans backticks, sans texte avant ou après. Le JSON doit contenir: note, mention, commentaire_general, points_forts[], points_manques[], corrections[].'
+      evalPrompt, [], state.apiKey, 1500,
+      'Tu es évaluateur médical. Réponds UNIQUEMENT avec du JSON valide et complet, sans backticks, sans texte avant ou après.'
     );
     const eval_ = safeParseJSON(raw);
     if (!eval_) throw new Error('JSON invalide reçu de Gemini');
+    
+    // Calcul du score total
+    const totalScore = (eval_.recueil_info?.score || 0) +
+                      (eval_.examen_clinique?.score || 0) +
+                      (eval_.analyse_resultats?.score || 0) +
+                      (eval_.hypothese_diagnostique?.score || 0) +
+                      (eval_.communication?.score || 0);
+    
+    eval_.totalScore = totalScore;
+    eval_.grade = EVALUATION_RUBRIC.getGrade(totalScore);
+    
     renderEvaluation(eval_);
   } catch(e) {
     document.getElementById('eval-loading-card').innerHTML = `<div class="alert alert-error">Erreur lors de l'évaluation: ${e.message}</div>`;
@@ -1451,19 +1561,45 @@ function renderEvaluation(ev) {
   document.getElementById('diagnosis-text').textContent = diag;
   document.getElementById('source-label-reveal').textContent = state.sourceLabel || '';
 
-  // Score
-  const note = Math.max(0, Math.min(20, ev.note || 10));
-  document.getElementById('score-num').textContent = note;
-  document.getElementById('score-mention').textContent = ev.mention || '';
+  // Calcul & affichage du score total
+  const totalScore = ev.totalScore || 0;
+  const grade = ev.grade || EVALUATION_RUBRIC.getGrade(0);
+  const percentage = Math.round((totalScore / EVALUATION_RUBRIC.getTotalPoints()) * 100);
+  
+  document.getElementById('score-num').textContent = totalScore;
+  document.getElementById('score-mention').textContent = `${grade.emoji} ${grade.mention} (${percentage}%)`;
   document.getElementById('eval-comment').textContent = ev.commentaire_general || '';
 
-  // Animate ring
+  // Animate ring with percentage
   const circumference = 326.7;
-  const offset = circumference - (note / 20) * circumference;
+  const offset = circumference - (percentage / 100) * circumference;
   const circle = document.getElementById('score-circle');
-  const color = note >= 14 ? 'var(--green)' : note >= 10 ? 'var(--yellow)' : 'var(--red)';
+  const color = percentage >= 80 ? 'var(--green)' : percentage >= 70 ? 'var(--yellow)' : percentage >= 60 ? '#ffa500' : 'var(--red)';
   circle.style.stroke = color;
   setTimeout(() => { circle.style.transition = 'stroke-dashoffset 1s ease'; circle.style.strokeDashoffset = offset; }, 100);
+
+  // Affichage détaillé des critères
+  const criteriaDetailsHtml = Object.entries(EVALUATION_RUBRIC.criteria).map(([key, criterion]) => {
+    const score = ev[key]?.score || 0;
+    const justif = ev[key]?.justification || '';
+    const scorePercentage = Math.round((score / criterion.maxPoints) * 100);
+    const statusColor = scorePercentage >= 80 ? '#22c55e' : scorePercentage >= 70 ? '#eab308' : scorePercentage >= 60 ? '#f97316' : '#ef4444';
+    
+    return `<div style="margin-bottom: 16px; padding: 12px; border-left: 4px solid ${statusColor}; background: rgba(0,0,0,0.02); border-radius: 4px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <strong style="font-size: 0.95em;">${criterion.label}</strong>
+        <span style="font-weight: bold; color: ${statusColor}; font-size: 1.1em;">${score}/${criterion.maxPoints}</span>
+      </div>
+      <div style="font-size: 0.85em; color: #666; line-height: 1.5;">${justif}</div>
+    </div>`;
+  }).join('');
+  
+  const criteriaContainer = `<div style="border-top: 2px solid var(--border); padding-top: 20px;">
+    <h4 style="margin-bottom: 16px; font-size: 1em;">📋 Évaluation par critère</h4>
+    ${criteriaDetailsHtml}
+  </div>`;
+  
+  document.getElementById('eval-criteria').innerHTML = criteriaContainer;
 
   // Lists
   const renderList = (id, items, color) => {
