@@ -781,25 +781,96 @@ async function randomCase() {
 }
 
 // ── CORS Proxy helper ──
-async function fetchWithProxy(url) {
-  // For PubMed/eutils — always use proxy due to CORS restrictions
+// PubMed cache for reducing API calls
+const pubmedCache = new Map();
+
+async function fetchWithProxy(url, retryCount = 0) {
+  const MAX_RETRIES = 1;
+  
+  // For PubMed/eutils — use caching + multiple proxy fallbacks
   if (url.includes('eutils.ncbi.nlm.nih.gov')) {
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    return fetch(proxyUrl);
+    // Check cache first
+    const cacheKey = url;
+    if (pubmedCache.has(cacheKey)) {
+      console.log('📦 Using cached PubMed response');
+      const cachedData = pubmedCache.get(cacheKey);
+      return new Response(JSON.stringify(cachedData), { 
+        status: 200, 
+        headers: { 'Content-Type': 'application/json' } 
+      });
+    }
+
+    // Try multiple proxy services in order
+    const proxies = [
+      (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`, // Primary — more reliable
+      (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, // Fallback 1
+      (u) => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(u)}` // Fallback 2
+    ];
+
+    for (const proxyFactory of proxies) {
+      try {
+        const proxyUrl = proxyFactory(url);
+        console.log(`🔄 Trying PubMed via proxy (attempt ${retryCount + 1})...`);
+        
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+        
+        const res = await fetch(proxyUrl, { signal: controller.signal });
+        clearTimeout(timeout);
+        
+        if (res.ok) {
+          // Cache the successful response
+          try {
+            const data = await res.clone().json();
+            pubmedCache.set(cacheKey, data);
+            console.log('✅ PubMed response cached');
+          } catch(e) {
+            console.warn('Could not cache response:', e);
+          }
+          return res;
+        }
+        
+        console.warn(`Proxy returned ${res.status}, trying next...`);
+      } catch(e) {
+        console.warn(`Proxy failed: ${e.message}, trying next...`);
+      }
+    }
+
+    // If all proxies fail and retries left, try again
+    if (retryCount < MAX_RETRIES) {
+      console.warn(`All proxies failed, retrying (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+      await new Promise(resolve => setTimeout(resolve, 2000 * (retryCount + 1)));
+      return fetchWithProxy(url, retryCount + 1);
+    }
+
+    // Final error
+    console.error('❌ All proxy services failed. PubMed API is unreachable.');
+    throw new Error('Impossible de contacter PubMed. Les services de proxy sont surchargés. Réessayez dans quelques instants.');
   }
 
   // For other URLs — try direct first
   try {
-    const res = await Promise.race([
-      fetch(url),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000))
-    ]);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res;
   } catch(e) {
-    // Fallback to proxy if direct fetch fails
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    return fetch(proxyUrl);
+    // Fallback to proxy
+    try {
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      
+      const res = await fetch(proxyUrl, { signal: controller.signal });
+      clearTimeout(timeout);
+      return res;
+    } catch(e2) {
+      throw e;
+    }
   }
 }
 
