@@ -628,9 +628,10 @@ async function callGemini(prompt, history = [], key, maxTokens = 1200, systemIns
       }
     };
 
-    // For gemma-3-27b-it: include system instruction in the first prompt instead
+    // For gemma-3-27b-it: embed system instruction in first prompt, never in payload
     if (systemInstruction && contents.length > 0) {
-      contents[0].parts.unshift({ text: `${systemInstruction}\n\n` });
+      const firstPrompt = contents[0].parts[0].text;
+      contents[0].parts[0].text = `${systemInstruction}\n\n${firstPrompt}`;
     }
 
     // Call Gemini API directly
@@ -788,8 +789,8 @@ async function fetchWithProxy(url) {
     ]);
     return res;
   } catch(e) {
-    // If direct fetch fails (CORS), use proxy
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+    // If direct fetch fails (CORS), use proxy — allorigins.win is more reliable
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
     return fetch(proxyUrl);
   }
 }
