@@ -710,6 +710,33 @@ document.addEventListener('DOMContentLoaded', () => {
 // ═══════════════════════════════════════════
 // RANDOM CASE
 // ═══════════════════════════════════════════
+async function getRandomQuery(specialty) {
+  const specialtyLabels = {
+    general: 'general medicine',
+    cardio: 'cardiology',
+    pneumo: 'pulmonology',
+    neuro: 'neurology',
+    gastro: 'gastroenterology',
+    endocrino: 'endocrinology',
+    infectio: 'infectious diseases',
+    urgences: 'emergency medicine'
+  };
+  const label = specialtyLabels[specialty] || specialty;
+  const prompt = `Generate a single creative and uncommon PubMed search query for a medical case report in the field of ${label}.
+Vary the disease, patient profile, or presentation each time. Avoid common conditions.
+Return ONLY the raw query string, no quotes, no explanation. Example: case report hemolytic anemia autoimmune young woman`;
+  try {
+    const raw = await callGemini(prompt, [], state.apiKey, 40);
+    const query = raw.trim().replace(/^["']|["']$/g, '').split('\n')[0].trim();
+    if (query.length > 5) return query;
+  } catch(e) {
+    console.warn('AI query generation failed, falling back to hardcoded list:', e.message);
+  }
+  // Fallback to hardcoded list if AI call fails
+  const queries = SPECIALTY_QUERIES[specialty];
+  return queries[Math.floor(Math.random() * queries.length)];
+}
+
 async function randomCase() {
   const btn = document.getElementById('random-btn');
   const status = document.getElementById('random-status');
@@ -717,16 +744,16 @@ async function randomCase() {
   document.getElementById('random-btn-text').textContent = 'Recherche d\'un cas...';
   document.getElementById('random-spinner').classList.remove('hidden');
   status.className = 'alert alert-info mt-3';
-  status.textContent = '🔎 Pioche d\'un article de cas clinique...';
+  status.textContent = '🤖 Génération d\'une requête unique...';
   status.classList.remove('hidden');
 
   try {
-    // Pick random query from selected specialty
-    const queries = SPECIALTY_QUERIES[activeSpecialty];
-    const query = queries[Math.floor(Math.random() * queries.length)];
+    // Use AI to generate a fresh, unique query for this specialty
+    const query = await getRandomQuery(activeSpecialty);
+    status.textContent = '🔎 Recherche d\'un article sur PubMed...';
 
-    // Search PubMed for case reports — random offset for variety
-    const retstart = Math.floor(Math.random() * 40);
+    // Search PubMed for case reports — deep random offset for variety
+    const retstart = Math.floor(Math.random() * 200);
     const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query+'[Title/Abstract] AND "case report"[Publication Type]')}&retmax=10&retstart=${retstart}&retmode=json&sort=relevance`;
     let sr = await fetchWithProxy(searchUrl);
     if (!sr.ok) throw new Error('Recherche PubMed échouée. Vérifiez votre connexion.');
