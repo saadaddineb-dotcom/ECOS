@@ -710,65 +710,49 @@ document.addEventListener('DOMContentLoaded', () => {
 // ═══════════════════════════════════════════
 // RANDOM CASE
 // ═══════════════════════════════════════════
-async function getRandomQuery(specialty) {
-  const specialtyLabels = {
-    general: 'general medicine',
-    cardio: 'cardiology',
-    pneumo: 'pulmonology',
-    neuro: 'neurology',
-    gastro: 'gastroenterology',
-    endocrino: 'endocrinology',
-    infectio: 'infectious diseases',
-    urgences: 'emergency medicine'
-  };
-  const label = specialtyLabels[specialty] || specialty;
-  const prompt = `Generate a single creative and uncommon PubMed search query for a medical case report in the field of ${label}.
-Vary the disease, patient profile, or presentation each time. Avoid common conditions.
-Return ONLY the raw query string, no quotes, no explanation. Example: case report hemolytic anemia autoimmune young woman`;
-  try {
-    const raw = await callGemini(prompt, [], state.apiKey, 40);
-    const query = raw.trim().replace(/^["']|["']$/g, '').split('\n')[0].trim();
-    if (query.length > 5) return query;
-  } catch(e) {
-    console.warn('AI query generation failed, falling back to hardcoded list:', e.message);
-  }
-  // Fallback to hardcoded list if AI call fails
-  const queries = SPECIALTY_QUERIES[specialty];
-  return queries[Math.floor(Math.random() * queries.length)];
-}
+// MeSH terms mapped to each specialty for broad PubMed queries
+const SPECIALTY_MESH = {
+  general:   'general practice',
+  cardio:    'cardiology',
+  pneumo:    'pulmonary medicine',
+  neuro:     'neurology',
+  gastro:    'gastroenterology',
+  endocrino: 'endocrinology',
+  infectio:  'communicable diseases',
+  urgences:  'emergency medicine'
+};
 
 async function randomCase() {
   const btn = document.getElementById('random-btn');
   const status = document.getElementById('random-status');
   btn.disabled = true;
-  document.getElementById('random-btn-text').textContent = 'Recherche d\'un cas...';
+  document.getElementById('random-btn-text').textContent = "Recherche d'un cas...";
   document.getElementById('random-spinner').classList.remove('hidden');
   status.className = 'alert alert-info mt-3';
-  status.textContent = '🤖 Génération d\'une requête unique...';
+  status.textContent = '🔎 Pioche d\'un article de cas clinique...';
   status.classList.remove('hidden');
 
   try {
-    // Use AI to generate a fresh, unique query for this specialty
-    const query = await getRandomQuery(activeSpecialty);
-    status.textContent = '🔎 Recherche d\'un article sur PubMed...';
-
-    // Search PubMed for case reports — deep random offset for variety
-    const retstart = Math.floor(Math.random() * 200);
-    const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query+'[Title/Abstract] AND "case report"[Publication Type]')}&retmax=10&retstart=${retstart}&retmode=json&sort=relevance`;
+    // Broad MeSH-based query + deep random pagination across PubMed's full pool
+    const meshTerm = SPECIALTY_MESH[activeSpecialty] || 'general practice';
+    const baseQuery = '"case report"[Publication Type] AND ' + meshTerm + '[MeSH Terms]';
+    const retstart = Math.floor(Math.random() * 1000);
+    const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(baseQuery)}&retmax=20&retstart=${retstart}&retmode=json`;
     let sr = await fetchWithProxy(searchUrl);
     if (!sr.ok) throw new Error('Recherche PubMed échouée. Vérifiez votre connexion.');
     const sd = await sr.json();
     let ids = sd.esearchresult?.idlist || [];
 
-    // Fallback: no offset search
+    // Fallback: retry without offset if no results at this page
     if (!ids.length) {
-      const sr2 = await fetchWithProxy(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(query)}&retmax=10&retmode=json`);
+      const fallbackUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(baseQuery)}&retmax=20&retmode=json`;
+      const sr2 = await fetchWithProxy(fallbackUrl);
       const sd2 = await sr2.json();
       ids = sd2.esearchresult?.idlist || [];
     }
     if (!ids.length) throw new Error('Aucun article trouvé pour cette spécialité. Essayez une autre.');
 
-    // Pick random article from results
+    // Pick random article from the returned pool
     const randomId = ids[Math.floor(Math.random() * ids.length)];
     status.textContent = '📄 Lecture de l\'article...';
 
@@ -780,7 +764,7 @@ async function randomCase() {
 
     if (!abstractText || abstractText.length < 100) throw new Error('Article trop court ou inaccessible.');
 
-    // Get title for label
+    // Get journal name for label
     const sumUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${randomId}&retmode=json`;
     const sumR = await fetchWithProxy(sumUrl);
     let journal = '';
@@ -795,7 +779,7 @@ async function randomCase() {
 
     status.textContent = '⚡ Génération du patient en cours...';
 
-    // Generate case directly and jump to chat
+    // Generate case and jump to chat
     await generateCaseFromSource();
 
   } catch(e) {
@@ -806,7 +790,6 @@ async function randomCase() {
     document.getElementById('random-spinner').classList.add('hidden');
   }
 }
-
 // ── CORS Proxy helper ──
 // PubMed cache for reducing API calls
 const pubmedCache = new Map();
